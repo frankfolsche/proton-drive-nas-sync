@@ -22,14 +22,14 @@ writable out of the box). See [Security](#security) for hardening options.
 ## 1. Build the image
 
 ```bash
-git clone git@github.com:grumpyspud/proton-drive-nas-sync.git
+git clone https://github.com/grumpyspud/proton-drive-nas-sync.git
 cd proton-drive-nas-sync
 docker build -t proton-drive-nas-sync:latest .
 ```
 
 The build is multi-stage: it installs dependencies, builds the React frontend,
-and produces a single runtime image. (The repo is private, so clone with a key
-or token that has read access.)
+and produces a single runtime image. (The repo is public, so a plain HTTPS
+clone works without any authentication.)
 
 > Prebuilt images are published to the GitHub Container Registry
 > (`ghcr.io/grumpyspud/proton-drive-nas-sync`) on version tags, for both

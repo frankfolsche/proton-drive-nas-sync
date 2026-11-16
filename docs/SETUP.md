@@ -33,7 +33,7 @@ feature and option in the UI, see [USER_GUIDE.md](USER_GUIDE.md).
 Clone, build, and start:
 
 ```bash
-git clone git@github.com:grumpyspud/proton-drive-nas-sync.git
+git clone https://github.com/grumpyspud/proton-drive-nas-sync.git
 cd proton-drive-nas-sync
 docker build -t proton-drive-nas-sync:latest .
 docker compose up -d
