@@ -58,7 +58,7 @@ and Proton Drive.
 ### Docker
 
 ```bash
-git clone git@github.com:grumpyspud/proton-drive-nas-sync.git
+git clone https://github.com/grumpyspud/proton-drive-nas-sync.git
 cd proton-drive-nas-sync
 docker build -t proton-drive-nas-sync:latest .
 docker compose up -d
