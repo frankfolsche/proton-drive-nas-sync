@@ -46,11 +46,6 @@ container runs as the `apps` user, so that user needs write access:
 Repeat for every dataset you want to sync. Only mount (and grant access to) the
 folders you actually want the app to touch.
 
-> **Alternative:** remove the `user: "568:568"` line from the YAML below and the
-> container runs as root, which can write to the mounted folders without any
-> permission changes. This is simpler but less contained, and files downloaded
-> from Drive will be owned by root.
-
 ## 3. Install the app from YAML
 
 Go to **Apps → Discover Apps**, choose **Install via YAML** (in the ⋮ menu next to
@@ -103,18 +98,17 @@ the `.pdn-trash` folder.
 
 ## 5. Updating
 
-There are two ways to tag the image:
+The YAML uses the `:latest` tag, which always points to the newest release.
+TrueNAS periodically checks the registry: when a new release is published, the
+app shows **Update available**. Click **Update** to pull it and restart. Nothing
+updates without that click.
 
-| Image tag | How updates work |
-|-----------|------------------|
-| `:latest` | TrueNAS periodically checks the registry. When a new release is published, the app shows **Update available**; click **Update** to pull it and restart. Nothing updates without that click. |
-| `:0.9.1` (a specific version) | TrueNAS will not offer updates. To update, edit the app and change the version number. To roll back, change it back. Version tags have no `v` prefix. |
-
-Either way, the app's own dashboard shows when a newer release exists, which is a
-useful backup if TrueNAS does not flag the update.
+The app's own dashboard also shows when a newer release exists, which is a useful
+backup if TrueNAS does not flag the update.
 
 Before updating, **take a snapshot of the `/config` dataset** (Datasets →
-select it → **Take Snapshot**) so you can roll back if a new version misbehaves.
+select it → **Take Snapshot**) so you can restore your settings and sync state if
+a new version misbehaves.
 
 ## Troubleshooting
 
@@ -128,7 +122,7 @@ sudo tail -n 40 /var/log/app_lifecycle.log
 
 | Message in the log | Likely cause |
 |--------------------|--------------|
-| `manifest unknown` | The image tag doesn't exist. Check the spelling (`latest`, not `lastest`; `0.9.1`, not `v0.9.1`). If the tag is right, the published image itself may be unavailable: check the repository's issues. |
+| `manifest unknown` | The image tag doesn't exist. Check the spelling (`latest`, not `lastest`). If the tag is right, the published image itself may be unavailable: check the repository's issues. |
 | `bind source path does not exist` | A host path in `volumes:` doesn't match a dataset. Check the pool name, dataset name, and capitalization. |
 | `port is already allocated` | Another app uses the same host port. Change the left side of the `ports:` mapping. |
 
