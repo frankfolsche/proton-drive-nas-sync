@@ -7,10 +7,33 @@ import {
     type LoginOptions,
     type PendingLogin,
 } from '../auth/login';
+import { Auth } from '../../vendor/proton-drive-sdk-account/auth';
+import { ACCOUNT_URL, AUTH_CLIENT_ID } from '../config';
 import { logger } from '../logger';
 import { resetCryptoBackend } from '../proton/cryptoBackend';
 import { buildSession, type ProtonSession } from '../proton/sdk';
 import { createSessionCredentials } from '../session';
+
+/** State of the browser sign-in, as reported to the UI. */
+export interface WebLoginState {
+    status: 'idle' | 'pending' | 'authenticated' | 'failed' | 'cancelled';
+    /** Epoch ms when the current sign-in link was issued (pending only). */
+    startedAt?: number;
+    uid?: string;
+    error?: string;
+}
+
+interface WebLoginAttempt {
+    state: WebLoginState;
+    abort: AbortController;
+}
+
+export class AlreadySignedInError extends Error {
+    constructor() {
+        super('Already signed in to Proton. Sign out first.');
+        this.name = 'AlreadySignedInError';
+    }
+}
 
 export interface LoginResponse {
     authenticated: boolean;
@@ -34,11 +57,15 @@ export interface LoginResponse {
  * the /auth request must only be issued once. The intermediate state (scoped
  * access token + SRP proof result) is kept in `pendingSession`/`pending`
  * between steps so the follow-up steps never re-issue /auth.
+ *
+ * Browser sign-in (`startWebLogin`) is the alternative that keeps the password
+ * out of this app entirely: see that method.
  */
 class AuthService {
     private session: ProtonSession | null = null;
     private pendingSession: ProtonSession | null = null;
     private pending: PendingLogin | null = null;
+    private webLogin: WebLoginAttempt | null = null;
 
     isAuthenticated(): boolean {
         return this.session !== null;
@@ -63,11 +90,15 @@ class AuthService {
                 this.session = this.pendingSession;
                 this.pendingSession = null;
                 this.pending = null;
-                logger.info(`Logged in as ${username} (uid=${result.uid})`);
+                logger.info(`Logged in with password (uid=${result.uid})`);
                 return { authenticated: true, uid: result.uid };
             }
 
-            // Fresh login: build a session and run phase 1 (auth/info + auth).
+            // Fresh login: a browser sign-in still waiting in another tab must
+            // not complete on top of this one.
+            this.cancelWebLogin();
+
+            // Build a session and run phase 1 (auth/info + auth).
             const credentials = createSessionCredentials({ persist: true });
             const session = await buildSession(credentials, logger);
             const options: LoginOptions = { username, password, humanVerificationToken };
@@ -79,7 +110,7 @@ class AuthService {
             this.session = session;
             this.pendingSession = null;
             this.pending = null;
-            logger.info(`Logged in as ${username} (uid=${result.uid})`);
+            logger.info(`Logged in with password (uid=${result.uid})`);
             return { authenticated: true, uid: result.uid };
         } catch (error) {
             if (error instanceof HumanVerificationRequiredError) {
@@ -106,6 +137,81 @@ class AuthService {
         }
     }
 
+    /**
+     * Start a browser sign-in ("session fork"), the same flow Proton's own Drive
+     * CLI uses. The user signs in on account.proton.me, where the password, 2FA
+     * (including security keys) and CAPTCHA are handled by Proton, and Proton
+     * hands this app a new session. The key password arrives encrypted with a
+     * key that only exists in the link's #fragment, so this app never sees the
+     * password, 2FA code, or mailbox password.
+     *
+     * Resolves with the sign-in link as soon as Proton issues it; completion is
+     * polled in the background (see getWebLoginState) and the link expires after
+     * 10 minutes. Starting again cancels the previous attempt, so only the newest
+     * link can sign the app in.
+     */
+    async startWebLogin(): Promise<{ signInUrl: string }> {
+        if (this.session) throw new AlreadySignedInError();
+        this.cancelWebLogin();
+        // A half-finished password login must not compete with this one.
+        this.pendingSession = null;
+        this.pending = null;
+
+        const credentials = createSessionCredentials({ persist: true });
+        const session = await buildSession(credentials, logger);
+        const auth = new Auth(AUTH_CLIENT_ID, session.accountApi, credentials, session.srp, logger, ACCOUNT_URL);
+
+        const attempt: WebLoginAttempt = {
+            state: { status: 'pending', startedAt: Date.now() },
+            abort: new AbortController(),
+        };
+        this.webLogin = attempt;
+
+        let linkIssued!: (url: string) => void;
+        let linkFailed!: (error: unknown) => void;
+        const signInUrl = new Promise<string>((resolve, reject) => {
+            linkIssued = resolve;
+            linkFailed = reject;
+        });
+
+        auth.authViaWeb((url) => linkIssued(url), attempt.abort.signal).then(
+            (result) => {
+                // Cancelled or superseded while the final status poll was in
+                // flight: leave this session unused.
+                if (this.webLogin !== attempt || attempt.abort.signal.aborted) return;
+                this.session = session;
+                attempt.state = { status: 'authenticated', uid: result.uid };
+                logger.info(`Signed in via browser (uid=${result.uid})`);
+            },
+            (error: unknown) => {
+                linkFailed(error); // no-op once the link was issued
+                if (this.webLogin !== attempt || attempt.abort.signal.aborted) return;
+                const message = error instanceof Error ? error.message : String(error);
+                attempt.state = { status: 'failed', error: message };
+                logger.error('Browser sign-in failed', error);
+            },
+        );
+
+        return { signInUrl: await signInUrl };
+    }
+
+    /** Progress of the current browser sign-in, for the UI to poll. */
+    getWebLoginState(): WebLoginState {
+        if (this.webLogin) return this.webLogin.state;
+        return { status: this.session ? 'authenticated' : 'idle' };
+    }
+
+    /** Stop waiting for a pending browser sign-in; its link stops working here. */
+    cancelWebLogin(): void {
+        const attempt = this.webLogin;
+        if (!attempt) return;
+        if (attempt.state.status === 'pending') {
+            attempt.abort.abort();
+            logger.info('Browser sign-in cancelled');
+        }
+        this.webLogin = null;
+    }
+
     /** Load a persisted session blob and refresh the token. Returns false if none. */
     async resume(): Promise<boolean> {
         try {
@@ -129,6 +235,7 @@ class AuthService {
     }
 
     async logout(): Promise<void> {
+        this.cancelWebLogin();
         if (this.session) {
             await this.session.credentials.signOut().catch(() => {});
         }

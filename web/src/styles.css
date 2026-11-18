@@ -421,6 +421,33 @@ input:focus {
     margin-bottom: 10px;
 }
 
+/* Browser sign-in (Proton session fork) */
+.web-login-intro {
+    font-size: 13px;
+    color: var(--ink-600);
+    margin: 0 0 14px;
+}
+
+.web-login a.btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.web-login-waiting {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-400);
+}
+
+.web-login-error {
+    margin-top: 14px;
+}
+
+.auth-switch {
+    margin-top: 10px;
+}
+
 .hv-snippet {
     background: var(--field-bg);
     border: 1px solid var(--border);

@@ -66,6 +66,26 @@ export function login(username: string, password: string, twoFactorCode?: string
     });
 }
 
+export interface WebLoginState {
+    status: 'idle' | 'pending' | 'authenticated' | 'failed' | 'cancelled';
+    startedAt?: number;
+    uid?: string;
+    error?: string;
+}
+
+/** Start a browser sign-in; returns the account.proton.me link to open. */
+export function startWebLogin(): Promise<{ signInUrl: string }> {
+    return request('/api/auth/web/start', { method: 'POST' });
+}
+
+export function getWebLoginState(): Promise<WebLoginState> {
+    return request<WebLoginState>('/api/auth/web/status');
+}
+
+export function cancelWebLogin(): Promise<{ ok: boolean }> {
+    return request('/api/auth/web/cancel', { method: 'POST' });
+}
+
 export function logout(): Promise<{ ok: boolean }> {
     return request('/api/auth/logout', { method: 'POST' });
 }

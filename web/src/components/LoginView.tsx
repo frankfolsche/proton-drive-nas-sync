@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from 'react';
-import { login } from '../api';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { cancelWebLogin, getWebLoginState, login, startWebLogin } from '../api';
+
+const WEB_LOGIN_POLL_MS = 3000;
 
 interface Props {
     onLogin: (uid?: string) => void;
@@ -59,6 +61,76 @@ export function LoginView({ onLogin, theme, onToggleTheme, appPasswordEnabled, o
     const [hvToken, setHvToken] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // Browser sign-in is the default; the password form is the fallback.
+    const [mode, setMode] = useState<'browser' | 'password'>('browser');
+    const [webUrl, setWebUrl] = useState<string | null>(null);
+    const [webBusy, setWebBusy] = useState(false);
+
+    const onLoginRef = useRef(onLogin);
+    onLoginRef.current = onLogin;
+
+    // While a browser sign-in is pending, poll the server until Proton has
+    // handed the app its session (or the link expired / was cancelled).
+    useEffect(() => {
+        if (!webUrl) return;
+        let stopped = false;
+        const tick = async () => {
+            try {
+                const state = await getWebLoginState();
+                if (stopped) return;
+                if (state.status === 'authenticated') {
+                    stopped = true;
+                    onLoginRef.current(state.uid);
+                } else if (state.status !== 'pending') {
+                    setWebUrl(null);
+                    setError(
+                        state.status === 'failed'
+                            ? state.error === 'Authentication timed out'
+                                ? 'The sign-in link expired. Start again.'
+                                : (state.error ?? 'Sign-in failed')
+                            : 'The sign-in was interrupted. Start again.',
+                    );
+                }
+            } catch {
+                /* transient network error: keep polling */
+            }
+        };
+        const id = setInterval(() => void tick(), WEB_LOGIN_POLL_MS);
+        return () => {
+            stopped = true;
+            clearInterval(id);
+        };
+    }, [webUrl]);
+
+    async function startBrowserLogin() {
+        setWebBusy(true);
+        setError(null);
+        try {
+            const { signInUrl } = await startWebLogin();
+            setWebUrl(signInUrl);
+            // May be blocked as a popup; the "Open Proton sign-in" link is the fallback.
+            window.open(signInUrl, '_blank', 'noopener,noreferrer');
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setWebBusy(false);
+        }
+    }
+
+    async function stopBrowserLogin() {
+        setWebUrl(null);
+        try {
+            await cancelWebLogin();
+        } catch {
+            /* the server drops it on its own after 10 minutes */
+        }
+    }
+
+    function switchMode(next: 'browser' | 'password') {
+        if (webUrl) void stopBrowserLogin();
+        setError(null);
+        setMode(next);
+    }
 
     async function doLogin(
         twoFactor: string | undefined,
@@ -124,6 +196,50 @@ export function LoginView({ onLogin, theme, onToggleTheme, appPasswordEnabled, o
                     </div>
                 </div>
 
+                {mode === 'browser' && (
+                    <div className="web-login">
+                        <p className="web-login-intro">
+                            Sign in on Proton&apos;s own website. Your password, two-factor code or security key, and
+                            mailbox password are entered there, never in this app.
+                        </p>
+                        {webUrl ? (
+                            <div className="hv-box">
+                                <p>
+                                    Finish signing in on the Proton page that opened. Keep this page open: it continues
+                                    automatically. The link works for 10 minutes.
+                                </p>
+                                <p>
+                                    Don&apos;t share the link: whoever signs in with it connects their Proton account to this
+                                    app.
+                                </p>
+                                <div className="hv-actions">
+                                    <a className="btn btn-primary" href={webUrl} target="_blank" rel="noopener noreferrer">
+                                        Open Proton sign-in ↗
+                                    </a>
+                                    <button type="button" className="btn btn-ghost" onClick={() => void stopBrowserLogin()}>
+                                        Cancel
+                                    </button>
+                                </div>
+                                <p className="web-login-waiting">Waiting for Proton…</p>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-block"
+                                onClick={() => void startBrowserLogin()}
+                                disabled={webBusy}
+                            >
+                                {webBusy ? 'Preparing sign-in…' : 'Sign in with Proton ↗'}
+                            </button>
+                        )}
+                        {error && <div className="alert web-login-error">{error}</div>}
+                        <button type="button" className="btn btn-ghost btn-block auth-switch" onClick={() => switchMode('password')}>
+                            Sign in with password instead
+                        </button>
+                    </div>
+                )}
+
+                {mode === 'password' && (
                 <form onSubmit={submit}>
                     <label className="field">
                         <span>Username</span>
@@ -181,7 +297,11 @@ export function LoginView({ onLogin, theme, onToggleTheme, appPasswordEnabled, o
                     <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
                         {busy ? 'Signing in…' : hv ? 'Continue' : 'Sign in'}
                     </button>
+                    <button type="button" className="btn btn-ghost btn-block auth-switch" onClick={() => switchMode('browser')}>
+                        Sign in with Proton in your browser instead (recommended)
+                    </button>
                 </form>
+                )}
 
                 <div className="auth-secondary">
                     {appPasswordEnabled ? (

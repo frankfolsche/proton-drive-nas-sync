@@ -77,7 +77,25 @@ scrypt hash: never in plaintext. You can change it later from the top bar
 
 ## 4. Sign in to Proton
 
-Enter your Proton username and password and press **Sign in**.
+### Recommended: sign in with Proton in your browser
+
+Press **Sign in with Proton ↗**. A Proton page (`account.proton.me`) opens in a
+new tab: sign in there as usual, including your two-factor code or security key
+and mailbox password. Keep the app's page open; it continues automatically once
+Proton confirms the sign-in.
+
+This is the same browser sign-in Proton's own Drive CLI uses. Your password and
+two-factor code are entered on Proton's site only and never reach this app, and
+Proton handles any CAPTCHA itself, so steps 5 to 7 below don't apply.
+
+- If the tab doesn't open (popup blocker), use **Open Proton sign-in ↗**.
+- The link works for 10 minutes. Don't share it: whoever signs in with it connects
+  their Proton account to the app.
+
+### Alternative: sign in with your password in the app
+
+Press **Sign in with password instead**, enter your Proton username and password,
+and press **Sign in**.
 
 ![Proton sign-in](screenshots/01-landing-login.png)
 

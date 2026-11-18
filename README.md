@@ -21,7 +21,8 @@ and Proton Drive.
 - **Deletion safety**: source-availability gate, a deletion-rate tripwire, and
   trash-before-delete (Drive `trashNodes` / local recycle) so a missing folder or
   drive can never wipe your data.
-- **Web UI**: Modern style login (SRP + optional 2FA + optional mailbox
+- **Web UI**: Modern style login (browser sign-in on proton.me, so the app never
+  sees your password; or in-app SRP + optional 2FA + optional mailbox
   password), folder-pair manager, and a live sync dashboard with progress bars
   (files processed + bytes + network rate), storage usage, and low-space warnings.
 - **"Real-time" sync**: every pair syncs continuously - additions, edits, and

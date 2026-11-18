@@ -29,7 +29,7 @@ import { sha1OfFile } from '../fs/files';
 import type { ProgressHandler, SyncProgressEvent } from '../engine/progress';
 import { logger } from '../logger';
 import { SyncDB, type Pair } from '../state/syncDb';
-import { authService } from './auth';
+import { AlreadySignedInError, authService } from './auth';
 import { appendSyncLog, querySyncLog, syncLogPath } from './syncLog';
 import { appendErrorLog, clearErrorLog, errorLogStatus, readErrorLog, setLastReset } from './errorLog';
 import { isAppAuthEnabled, isValidSession, issueSessionToken, loadAppAuth, setAppPassword, verifyAppPassword } from './appAuth';
@@ -438,6 +438,31 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const result = await authService.login(username, password, twoFactorCode, mailboxPassword, humanVerificationToken);
     res.json(result);
+});
+
+// Browser sign-in: the user signs in on account.proton.me and Proton hands this
+// app a session, so the password never reaches this server. The returned link
+// carries a one-time key in its #fragment: it must only be opened by the user.
+app.post('/api/auth/web/start', async (_req, res) => {
+    try {
+        res.json(await authService.startWebLogin());
+    } catch (err) {
+        if (err instanceof AlreadySignedInError) {
+            res.status(409).json({ error: err.message });
+            return;
+        }
+        logger.error('Could not start browser sign-in', err);
+        res.status(502).json({ error: `Could not start browser sign-in: ${(err as Error).message}` });
+    }
+});
+
+app.get('/api/auth/web/status', (_req, res) => {
+    res.json(authService.getWebLoginState());
+});
+
+app.post('/api/auth/web/cancel', (_req, res) => {
+    authService.cancelWebLogin();
+    res.json({ ok: true });
 });
 
 class SyncBusyError extends Error {}
